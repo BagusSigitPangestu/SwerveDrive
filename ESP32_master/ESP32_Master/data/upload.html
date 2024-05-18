@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" type="text/css" href="style.css" />
+    <script src="jquery.min.js"></script>
+    <title>Upload Firmware</title>
+  </head>
+  <body>
+    <div class="update-page">
+      <div class="form-update">
+        <h2 align="center">ESP32 FIRMWARE</h2>
+        <br />
+        <form
+          class="update-form"
+          action="#"
+          method="POST"
+          enctype="multipart/form-data"
+        >
+          Select firmware (.bin file):
+          <br />
+          <input type="file" name="update" accept=".bin" required />
+          <br /><br>
+          <div id="prg"></div>
+          <br>
+          <div id="prgbar">
+            <div id="bar"></div>
+          </div>
+          <br>
+          <div class="submit">
+            <input type="submit" value="Update Firmware" />
+          </div>
+        </form>
+      </div>
+    </div>
+    <script>
+      $("form").submit(function (e) {
+        e.preventDefault();
+        var form = $(".update-form")[0];
+        var data = new FormData(form);
+        $.ajax({
+          url: "/upload",
+          type: "POST",
+          data: data,
+          contentType: false,
+          processData: false,
+          xhr: function () {
+            var xhr = new window.XMLHttpRequest();
+            xhr.upload.addEventListener(
+              "progress",
+              function (evt) {
+                if (evt.lengthComputable) {
+                  var per = evt.loaded / evt.total;
+                  $("#prg").html("progress: " + Math.round(per * 100) + "%");
+                  $("#bar").css("width", Math.round(per * 100) + "%");
+                }
+              },
+              false
+            );
+            return xhr;
+          },
+          success: function (d, s) {
+            console.log("success!");
+          },error: function (a, b, c) {
+          }
+        });
+      });
+    </script>
+  </body>
+</html>
