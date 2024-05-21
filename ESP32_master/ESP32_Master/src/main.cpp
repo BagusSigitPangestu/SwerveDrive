@@ -1,5 +1,5 @@
 /*
-  Program untuk update firmware lewat OTA dengan esp32 sebagai Access Point
+  Panggil file hedder main
 */
 #include "main.h"
 
@@ -112,7 +112,7 @@ void handleUpdate()
   }
 }
 
-void otaWebServerTask(void *parameter)
+void WebServerTask(void *parameter)
 {
   ArduinoOTA.setHostname("OTA_ESP32");
   ArduinoOTA.begin();
@@ -144,7 +144,7 @@ void otaWebServerTask(void *parameter)
   server.on("/show.png", HTTP_GET, handleImg2);
   server.begin();
 
-  while (true)
+  for (;;)
   {
     ArduinoOTA.handle();
     server.handleClient();
@@ -153,14 +153,111 @@ void otaWebServerTask(void *parameter)
 void mainApplicationTask(void *parameter)
 {
   pinMode(2, OUTPUT);
-  while (true)
+  for (;;)
   {
+    while (Serial.available() > 0)
+    {
+      char d = Serial.read();
+      data += d;
+      if (d == '$')
+      {
+        parsing = true;
+      }
+
+      if (parsing)
+      {
+        // Serial.print("data masuk= " + data);
+        int index = 0;
+        for (int i = 0; i < data.length(); i++)
+        {
+          if (data[i] == '#')
+          {
+            index++;
+            ArrData[index] = "";
+          }
+          else
+          {
+            ArrData[index] += data[i];
+          }
+        }
+
+        for (int j = 0; j < 4; j++)
+        {
+          Drive_SP[j] = ArrData[1].toInt();
+          Steer_SP[j] = ArrData[2].toInt();
+        }
+        Serial.print(Drive_SP[0]);
+        Serial.print("\t");
+        Serial.print(Drive_SP[1]);
+        Serial.print("\t");
+        Serial.print(Drive_SP[2]);
+        Serial.print("\t");
+        Serial.println(Drive_SP[3]);
+
+        Serial.print(Steer_SP[0]);
+        Serial.print("\t");
+        Serial.print(Steer_SP[1]);
+        Serial.print("\t");
+        Serial.print(Steer_SP[2]);
+        Serial.print("\t");
+        Serial.println(Steer_SP[3]);
+        Serial.println("");
+
+        data = "";
+        parsing = false;
+      }
+    }
+
     digitalWrite(2, HIGH);
-    vTaskDelay(500);
-    digitalWrite(2, LOW);
+    // Serial.println("nyala ");
+    // vTaskDelay(500);
+    // digitalWrite(2, LOW);
+    // Serial.println("Mati ");
     vTaskDelay(500);
   }
 }
+
+void I2CCommunicationSendTask(void *parameter)
+{
+  Wire.begin();
+  for (;;)
+  {
+
+    String dataModule1 = String(Drive_SP[0]) + "#" + String(Steer_SP[0]);
+    // String dataModule2 = String(Drive_SP[1]) + "#" + String(Steer_SP[1]);
+    // String dataModule3 = String(Drive_SP[2]) + "#" + String(Steer_SP[2]);
+    // String dataModule4 = String(Drive_SP[3]) + "#" + String(Steer_SP[3]);
+
+    int dataSize = dataModule1.length();
+    char dataToSend[dataSize + 1];
+    dataModule1.toCharArray(dataToSend, dataSize + 1); // Mengonversi String ke dalam char array
+    Serial.println(dataToSend);
+    // Mulai transmisi ke slave dengan alamat yang ditentukan
+    Wire.beginTransmission(SLAVE_ADDR_MODULE[0]);
+    // Mengirim data (array of characters) melalui I2C
+    Wire.write((const uint8_t *)dataToSend, dataSize);
+    // Akhiri transmisi
+    Wire.endTransmission();
+    vTaskDelay(100);
+
+    // String dataModule[4];
+    // for (int i = 0; i < 4; i++)
+    // {
+    //   dataModule[i] = String(Drive_SP[i]) + "#" + String(Steer_SP[i]);
+    //   int dataSize = dataModule[i].length();
+    //   char dataToSend[dataSize + 1];
+    //   dataModule[i].toCharArray(dataToSend, dataSize + 1); // Mengonversi String ke dalam char array
+    //   // Mulai transmisi ke slave dengan alamat yang ditentukan
+    //   Wire.beginTransmission(SLAVE_ADDR_MODULE[i]);
+    //   // Mengirim data (array of characters) melalui I2C
+    //   Wire.write((const uint8_t *)dataToSend, dataSize);
+    //   // Akhiri transmisi
+    //   Wire.endTransmission();
+    //   vTaskDelay(100);
+    // }
+  }
+}
+
 void setup()
 {
   WiFi.mode(WIFI_AP);
@@ -170,16 +267,26 @@ void setup()
   IPAddress NMask(255, 255, 255, 0);
   WiFi.softAPConfig(Ip, Ip, NMask);
   // if debugging uncomment
-  Serial.begin(9600);
+  Serial.begin(115200);
 
   // Core 0 setup
   xTaskCreatePinnedToCore(
-      otaWebServerTask,
+      WebServerTask,
       "otaWebServerTask",
       3000,
       NULL,
       1,
-      &Task1,
+      &WebTask,
+      0);
+
+  // Core 0 setup
+  xTaskCreatePinnedToCore(
+      I2CCommunicationSendTask,
+      "I2CCommunicationSendTask",
+      10000,
+      NULL,
+      2,
+      &I2CTask,
       0);
 
   // Core 1 setup
@@ -189,11 +296,11 @@ void setup()
       10000,
       NULL,
       1,
-      &Task2,
+      &blinkTask,
       1);
 }
 
 void loop()
 {
-  // Nothing here, tasks handle the execution
+  vTaskDelay(1);
 }
